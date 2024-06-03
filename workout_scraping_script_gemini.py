@@ -16,8 +16,8 @@ import regex as re
 import time
 import math
 
-TYPE_OF_WORKOUT_PLAN = 'HIIT'
-NUMBER_OF_RESULTS = '10'
+TYPE_OF_WORKOUT_PLAN = 'yoga'
+NUMBER_OF_RESULTS = '100'
 TOTAL_WORKOUTS = 10
 
 
@@ -81,16 +81,16 @@ for i in range(len(results['organic_results'])):
 
 
 #ADD SOMEETHING TO ONLY ADD URLS THAT MAKE SENSE
-for i in range(len(results['organic_results'])):
-    page_urls = scrape_page_urls(results['organic_results'][i]['url']) 
-    # print(page_urls)
-    links = json.loads(page_urls[1])['all_links']
-    new_links = []
-    domain = urlparse(results['organic_results'][i]['url']).netloc
-    for link in links:
-        if  validators.url(link) and domain in link:
-            new_links.append(link)
-    urls.extend(new_links)
+# for i in range(len(results['organic_results'])):
+#     page_urls = scrape_page_urls(results['organic_results'][i]['url']) 
+#     # print(page_urls)
+#     links = json.loads(page_urls[1])['all_links']
+#     new_links = []
+#     domain = urlparse(results['organic_results'][i]['url']).netloc
+#     for link in links:
+#         if  validators.url(link) and domain in link:
+#             new_links.append(link)
+#     urls.extend(new_links)
 
 safety_settings = [
     {
@@ -120,7 +120,7 @@ prompt = '''
     The workout plans must contain all of the necessary information for anyone to actually do the exercises. 
     For example legs for 3 sets of 5 reps does not make sense since legs is not an exercise.
     You are to check if the given text has complete structured workout plans in it, return "yes" if there is one, and "no" if there is not one. If the answer is "yes," also return the complete structured workout plans. Everything about the workout plan MUST be specified, otherwise there is no workout plan. 
-    If the workout plan refers to something else on the page (like a chart) make sure to include it in the workout plan. Extract the workout plans from the new message and return only the workout plans in a structured format.
+    If the workout plan refers to something else on the page (like a chart) make sure to include it in the workout plan. Extract the workout plans from the message and return only the workout plans in a structured format.
     '''
 genai.configure(api_key='AIzaSyCapu0rOU5yJa_W3tK9RJf2p7u8wmDiWNU')
 clientG = instructor.from_gemini(client=genai.GenerativeModel(model_name="models/gemini-1.5-pro-latest", 
@@ -134,8 +134,8 @@ clientG = instructor.from_gemini(client=genai.GenerativeModel(model_name="models
     ),
     mode=instructor.Mode.GEMINI_JSON)
 class isPlan(BaseModel):
-    contains_complete_workout_plan: bool = Field(description='contains workout plan.')
-    workout_plan: Optional[str] = Field(description='complete workout plan')
+    contains_complete_workout_plan: bool = Field(description='contains complete structured workout plan and does not reference video')
+    workout_plan: Optional[str] = Field(description='complete workout plan with at least 3 different movements/exercises/etc per day')
     # additional_information: str = Field(description='additional information for the workout plan')
     workout_title: Optional[str] = Field(description='should be an informative name summarizing what the workout plan')
 class plans(BaseModel):
@@ -151,7 +151,7 @@ class plans(BaseModel):
 #     '''}
 
 workouts = []
-while len(workouts)< TOTAL_WORKOUTS:
+while len(workouts)< TOTAL_WORKOUTS and len(urls)>0:
     print('Number of Workouts: {}'.format(len(workouts)))
     current_url = urls.pop(0)
     page_content = scrape_page_content(current_url)
