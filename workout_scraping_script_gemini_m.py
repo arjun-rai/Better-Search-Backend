@@ -1,20 +1,16 @@
 import requests
 import json
 from scrapingbee import ScrapingBeeClient
-import validators
 from urllib.parse import urlparse
 import trafilatura
-from lxml import html
 import instructor
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
-from pydantic import BaseModel, Field, field_validator
-from typing_extensions import Literal
+from pydantic import BaseModel, Field, field_validator, AfterValidator
+from typing_extensions import Literal,Annotated
 from typing import List, Dict, Optional
 import tiktoken
 import regex as re
-import time
-import math
 
 TYPE_OF_WORKOUT_PLAN = 'yoga'
 NUMBER_OF_RESULTS = '100'
@@ -75,22 +71,12 @@ def scrape_page_content(url):
     )  
     return response.status_code, response.content
 
+
+#BAN YOUTUBE?
 urls = []
 for i in range(len(results['organic_results'])):
     urls.append(results['organic_results'][i]['url'])
 
-
-#ADD SOMEETHING TO ONLY ADD URLS THAT MAKE SENSE
-# for i in range(len(results['organic_results'])):
-#     page_urls = scrape_page_urls(results['organic_results'][i]['url']) 
-#     # print(page_urls)
-#     links = json.loads(page_urls[1])['all_links']
-#     new_links = []
-#     domain = urlparse(results['organic_results'][i]['url']).netloc
-#     for link in links:
-#         if  validators.url(link) and domain in link:
-#             new_links.append(link)
-#     urls.extend(new_links)
 
 safety_settings = [
     {
@@ -133,63 +119,64 @@ clientG = instructor.from_gemini(client=genai.GenerativeModel(model_name="models
     system_instruction=prompt
     ),
     mode=instructor.Mode.GEMINI_JSON)
+
 class isPlan(BaseModel):
-    contains_complete_workout_plan: bool = Field(description='contains complete structured workout plan and does not reference video')
-    workout_plan: Optional[str] = Field(description='complete workout plan with at least 3 different movements/exercises/etc per day')
-    # additional_information: str = Field(description='additional information for the workout plan')
-    workout_title: Optional[str] = Field(description='should be an informative name summarizing what the workout plan')
+    contains_complete_workout_plan: bool = Field(description='contains complete structured workout plan, does not reference video or other sites')
+    workout_plan: str = Field(description='complete workout plan with >3 movements/exercises/etc per day')
+    additional_information: str = Field(description='additional information for the workout plan')
+    workout_title: str = Field(description='should be an informative name summarizing what the workout plan')
 class plans(BaseModel):
-    properties: Optional[List[isPlan]]
+    properties: List[isPlan]
 
 
-# prompt2 = {"role": "system", "content": '''
-#     You are an expert fitness trainer looking for structured workout plans. Structured workout plans have multiple specific exercises, as well as the needed specified parameters to do the exercises, like number of reps, sets, time duration, or etc. 
-#     The workout plans must contain all of the necessary information for anyone to actually do the exercises. 
-#     For example legs for 3 sets of 5 reps does not make sense since legs is not an exercise.
-#     You are to check if the given text has complete structured workout plans in it, return "yes" if there is one, and "no" if there is not one. If the answer is "yes," also return the complete structured workout plans. Everything about the workout plan MUST be specified, otherwise there is no workout plan. 
-#     If the workout plan refers to something else on the page (like a chart) make sure to include it in the workout plan. Extract the workout plans from the new message and return them in a structured format. 
-#     '''}
+import concurrent.futures
 
-workouts = []
-while len(workouts)< TOTAL_WORKOUTS and len(urls)>0:
-    print('Number of Workouts: {}'.format(len(workouts)))
-    current_url = urls.pop(0)
-    page_content = scrape_page_content(current_url)
+def process_url(url):
+    print(f'Processing URL: {url}')
+    page_content = scrape_page_content(url)
     cleantext = trafilatura.extract(page_content[1], include_comments=False)
     if not isinstance(cleantext, str):
-        continue
+        return None
     cleantext = re.sub(r'\s+', ' ', cleantext).strip()
     cleantext = re.sub(r'[\n\r\t]', ' ', cleantext)
     cleantext = re.sub(r'[^\w\s\/\-]', '', cleantext)
-    resp_results=''
-    print(num_tokens_from_string(cleantext, 'cl100k_base'))
-    start = time.time()
+    # print(num_tokens_from_string(cleantext, 'cl100k_base'))
     try:
         resp = clientG.messages.create(
-        messages=[
-        {"role": "user", "content": '{}'.format(cleantext)}
-        ], 
-        response_model=plans,
-        strict=False
+            messages=[{"role": "user", "content": cleantext}],
+            response_model=plans,
+            strict=False
         )
-    except:
-        print('failed')
-    end = time.time()
-    length = end - start
-    print("Time Elapsed: {}".format(length))
-    results = resp.model_dump()['properties']
-    if results==None:
-        continue
-    for workout in results:
-        workout['url'] = current_url
-        if workout['contains_complete_workout_plan']:
-            workouts.append(workout)
-    # results['url'] = current_url
-    # if resp.model_dump()['properties'][0]['contains_complete_workout_plan']:
-    #     workouts.extend(results)
+        results = resp.model_dump()['properties']
+        if results is None:
+            return None
+        return [(workout, url) for workout in results if workout['contains_complete_workout_plan']]
+    except Exception as e:
+        print(f'Failed to process URL {url}: {str(e)}')
+        return None
 
-with open('data.json', 'w', encoding='utf-8') as f:
-    json.dump(workouts, f, ensure_ascii=False, indent=4)
+def main():
+    workouts = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        future_to_url = {executor.submit(process_url, url): url for url in urls}
+        for future in concurrent.futures.as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                result = future.result()
+                if result:
+                    for workout, url in result:
+                        workout['url'] = url
+                        workouts.append(workout)
+                        if len(workouts) >= TOTAL_WORKOUTS:
+                            return workouts
+            except Exception as exc:
+                print(f'{url} generated an exception: {exc}')
+    return workouts
+
+if __name__ == "__main__":
+    workouts = main()
+    with open('data.json', 'w', encoding='utf-8') as f:
+        json.dump(workouts, f, ensure_ascii=False, indent=4)
     
 
 
