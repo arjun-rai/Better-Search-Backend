@@ -13,9 +13,10 @@ import tiktoken
 import regex as re
 from openai import OpenAI
 
-QUERY = 'structured weight lifting workout plan'
+QUERY = 'movie reviews for Avengers Endgame'
 NUMBER_OF_RESULTS = '20'
 TOTAL = 10
+THRESHOLD = 8
 
 
 def num_tokens_from_string(string: str, encoding_name: str) -> int:
@@ -103,7 +104,7 @@ for i in range(len(results['organic_results'])):
 #     ]
 
 prompt1 = '''
-   Is there a specific, {QUERY} in the following text? It has to contain specific details about {QUERY}, and cannot reference videos. If so, return "Yes". If not, return "No".
+   Is there a specific, {QUERY} in the following text? It has to contain specific details about {QUERY}, and cannot reference videos or other sites. If so, return "Yes". If not, return "No".
     '''.format(QUERY=QUERY)
 
 prompt2 = '''
@@ -148,7 +149,7 @@ def process_url(url):
         )
         hasThing = resp.model_dump()[f'contains_complete_{QUERY.replace(" ", "_")}']
         score = resp.model_dump()['score']
-        if hasThing and score > 8:
+        if hasThing and score > THRESHOLD:
             # print(resp.model_dump()['score'])
             resp = clientOA.chat.completions.create(
             model="gpt-4o",
