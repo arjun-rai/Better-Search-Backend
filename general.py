@@ -118,12 +118,30 @@ genai.configure(api_key='AIzaSyCapu0rOU5yJa_W3tK9RJf2p7u8wmDiWNU')
 #     mode=instructor.Mode.GEMINI_JSON)
 clientOA = instructor.patch(OpenAI(api_key='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'))
 
+requirements = clientOA.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": 'what basic descriptions, characteristics, etc. should a {QUERY} have? Do not give an example. Must be short.'.format(QUERY=QUERY)}], max_tokens=4096
+            )
+
+
+# print(requirements.model_dump()['choices'][0]['message']['content'])
+reqConvert = str(requirements.model_dump()['choices'][0]['message']['content'])
+reqConvert = reqConvert.replace('\n', ' ')
+print(reqConvert)
+
+
+
 class isQuery(BaseModel):
-    exec(f'contains_complete_{QUERY.replace(" ", "_")}: bool = Field(description="contains complete {QUERY}, does not reference video or other sites")')
-    score: int = Field(description='does the plan contain the necessary information to be a good {QUERY}, 0-10'.format(QUERY=QUERY))
+    # contains_specifics: bool = Field(description="contains all of these specifics: {reqConvert}")
+    score: int = Field(description='does the text contain the necessary information to be a good {QUERY}, 0-10'.format(QUERY=QUERY))
+    exec(f'is_this_a_{QUERY.replace(" ", "_")}: bool = Field(description="is this a {QUERY}")')
+
+class item(BaseModel):
+    exec(f'{QUERY.replace(" ", "_")}: str = Field(description="{QUERY}")')
+    exec(f'''contains_specifics: bool = Field(description="is this a {QUERY} and contains all of these specifics: {reqConvert}")''')
 
 class query(BaseModel):
-    exec(f'{QUERY.replace(" ", "_")}: str = Field(description="complete {QUERY}")')
+    properties: List[item]
 
 import concurrent.futures
 
@@ -147,15 +165,16 @@ def process_url(url):
         model="gpt-4o",
         messages=[{'role':"system", "content":prompt1},{"role": "user", "content": cleantext}], response_model=isQuery, max_tokens=4096
         )
-        hasThing = resp.model_dump()[f'contains_complete_{QUERY.replace(" ", "_")}']
+        # hasThing = resp.model_dump()['contains_specifics']
         score = resp.model_dump()['score']
-        if hasThing and score > THRESHOLD:
+        check = resp.model_dump()[f'is_this_a_{QUERY.replace(" ", "_")}']
+        if score > THRESHOLD and check:
             # print(resp.model_dump()['score'])
             resp = clientOA.chat.completions.create(
             model="gpt-4o",
             messages=[{'role':"system", "content":prompt2},{"role": "user", "content": cleantext}], response_model=query, max_tokens=4096
             )
-            return resp.model_dump()[QUERY.replace(" ", "_")]
+            return resp.model_dump()['properties']
         else:
             return None
     except Exception as e:
