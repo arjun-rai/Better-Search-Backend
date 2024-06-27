@@ -9,6 +9,7 @@ from typing import List, Dict, Optional
 import tiktoken
 import regex as re
 from openai import OpenAI
+import boto3
 
 
 def handler(event, context):
@@ -16,6 +17,7 @@ def handler(event, context):
     eventBody = event['queryStringParameters']
     QUERY = eventBody['query']
     TOTAL = int(eventBody['num_result'])
+    USER = eventBody['user']
     NUMBER_OF_RESULTS = str(int(TOTAL*2))
     THRESHOLD = 8
 
@@ -177,7 +179,8 @@ def handler(event, context):
         except Exception as e:
             print(f'Failed to process URL {url}: {str(e)}')
             return None
-        
+    DBresource = boto3.resource("dynamodb")
+    dymaboDB = DBresource.Table('dataSets')
     urls = []
     # print(results)
     for i in range(len(results['organic_results'])):
@@ -193,13 +196,15 @@ def handler(event, context):
                 if result!=None:
                     results.append(result)
                     if len(results) >= TOTAL:
-                        response = {"statusCode": 200, "body": json.dumps(results)}
-                        return response
+                        break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
 
-    response = {"statusCode": 200, "body": json.dumps(results)}
+    dymaboDB.put_item(Item={'user': USER, 'title':QUERY, 'data':json.dumps(results)})
+
+    response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
+
 
 if __name__ == '__main__':
     handler('','')

@@ -25,4 +25,4 @@ custom:
 package:
   exclude:
     - node_modules/**
-    - venv/**
+    - .venv/**
