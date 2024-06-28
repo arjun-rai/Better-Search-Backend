@@ -14,7 +14,6 @@ import datetime
 
 
 def handler(event, context):
-    # print(event)
     eventBody = event['queryStringParameters']
     QUERY = eventBody['query']
     TOTAL = int(eventBody['num_result'])
