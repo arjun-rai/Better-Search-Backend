@@ -10,6 +10,7 @@ import tiktoken
 import regex as re
 from openai import OpenAI
 import boto3
+import datetime
 
 
 def handler(event, context):
@@ -199,8 +200,9 @@ def handler(event, context):
                         break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
-
-    dymaboDB.put_item(Item={'user': USER, 'title':QUERY, 'data':json.dumps(results)})
+    currentTime = datetime.datetime.utcnow().isoformat()
+    # print(type(currentTime))
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
