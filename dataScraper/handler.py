@@ -3,7 +3,7 @@ import json
 from scrapingbee import ScrapingBeeClient
 import trafilatura
 import instructor
-from pydantic import BaseModel, Field, field_validator, AfterValidator
+from pydantic import BaseModel, Field, field_validator, AfterValidator, FieldValidationInfo
 from typing_extensions import Literal,Annotated
 from typing import List, Dict, Optional
 import tiktoken
@@ -18,8 +18,11 @@ def handler(event, context):
     QUERY = eventBody['query']
     TOTAL = int(eventBody['num_result'])
     USER = eventBody['user']
+    # QUERY='best smartphones 2024'
+    # TOTAL=5
+    # USER='asrrai09876@gmail.com'
     NUMBER_OF_RESULTS = str(int(TOTAL*2))
-    THRESHOLD = 8
+    THRESHOLD = 8 
 
 
     def num_tokens_from_string(string: str, encoding_name: str) -> int:
@@ -107,9 +110,9 @@ def handler(event, context):
     Is there a specific, {QUERY} in the following text? It has to contain specific details about {QUERY}, and cannot reference videos or other sites. If so, return "Yes". If not, return "No".
         '''.format(QUERY=QUERY)
 
-    prompt2 = '''
-        Given that there is a specific, {QUERY} in the text, extract it.
-        '''.format(QUERY=QUERY)
+    # prompt2 = '''
+    #     Given that there is a specific, {QUERY} in the text, extract it.
+    #     '''.format(QUERY=QUERY)
 
     # clientYesNo = instructor.from_gemini(client=genai.GenerativeModel(model_name="models/gemini-1.5-pro-latest", 
     #     system_instruction=prompt1
@@ -117,34 +120,54 @@ def handler(event, context):
     #     mode=instructor.Mode.GEMINI_JSON)
     clientOA = instructor.patch(OpenAI(api_key='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'))
 
+
+    class prompt(BaseModel):
+        prompt: str=Field(description="system prompt for assisstant")
     requirements = clientOA.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": 'what basic descriptions, characteristics, etc. should a {QUERY} have? Do not give an example. Must be short.'.format(QUERY=QUERY)}], max_tokens=4096
+                messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage.'.format(QUERY=QUERY)}], max_tokens=4096, response_model=prompt
                 )
 
+    # print(requirements)
+  
+    # print(requirements.model_dump()['prompt'])
+#     reqConvert = str(requirements.model_dump()['choices'][0]['message']['content'])
+#     reqConvert = reqConvert.replace('\n', ' ')
+#     # print(reqConvert)
 
-    # print(requirements.model_dump()['choices'][0]['message']['content'])
-    reqConvert = str(requirements.model_dump()['choices'][0]['message']['content'])
-    reqConvert = reqConvert.replace('\n', ' ')
-    # print(reqConvert)
-
-
-
+    alreadyIn=[]
+    alreadyInNum=[1]*(int(1.5*TOTAL))
     class isQuery(BaseModel):
         # contains_specifics: bool = Field(description="contains all of these specifics: {reqConvert}")
-        score: int = Field(description='does the text contain the necessary information to be a good {QUERY}, 0-10'.format(QUERY=QUERY))
-        exec(f'is_this_a_{QUERY.replace(" ", "_")}: bool = Field(description="is this a {QUERY}")')
+        score: int = Field(description='does the text contain the necessary information for {QUERY}, 0-10'.format(QUERY=QUERY))
+        # exec(f'is_this_a_{QUERY.replace(" ", "_")}: bool = Field(description="is this a {QUERY}")')
 
     class item(BaseModel):
         exec(f'{QUERY.replace(" ", "_")}: str = Field(description="{QUERY}")')
-        exec(f'''contains_specifics: bool = Field(description="is this a {QUERY} and contains all of these specifics: {reqConvert}")''')
+        # exec(f'''contains_specifics: bool = Field(description="is this a {QUERY} and contains all of these specifics: {reqConvert}")''')
+        not_already_scraped: int =Field(description=f'is it in the following list already? if it is, return the index of that item, else return -1: {",".join(alreadyIn)}'.format(alreadyIn))
+        desc: str = Field(description='Why is this good? What are the good factors about it and what is are the relevant details. (keep concise)')
+        cost: Optional[str] = Field(description="price of item")
+        
+
+
+        @field_validator('not_already_scraped', mode='before')
+        def must_not_be_in_list(cls, v, info: FieldValidationInfo):
+            # Check the values of both field1 and field2
+            field2 = v if info.field_name == 'not_already_scraped' else info.data.get('not_already_scraped')
+
+            if field2 !=-1:
+                alreadyInNum[int(field2)]+=1
+                raise ValueError('has to be not already in the list')
+            return v
+
 
     class query(BaseModel):
         properties: List[item]
 
     import concurrent.futures
 
-    def process_url(url):
+    def process_url(url, alreadyIn):
         print(f'Processing URL: {url}')
         page_content = scrape_page_content(url)
         cleantext = trafilatura.extract(page_content[1], include_comments=False)
@@ -166,20 +189,22 @@ def handler(event, context):
             )
             # hasThing = resp.model_dump()['contains_specifics']
             score = resp.model_dump()['score']
-            check = resp.model_dump()[f'is_this_a_{QUERY.replace(" ", "_")}']
-            if score > THRESHOLD and check:
+            # check = resp.model_dump()[f'is_this_a_{QUERY.replace(" ", "_")}']
+            if score > THRESHOLD:
                 # print(resp.model_dump()['score'])
                 resp = clientOA.chat.completions.create(
                 model="gpt-4o",
-                messages=[{'role':"system", "content":prompt2},{"role": "user", "content": cleantext}], response_model=query, max_tokens=4096
+                messages=[{'role':"system", "content":requirements.model_dump()['prompt']},{"role": "user", "content": cleantext}], response_model=query, max_tokens=4096
                 )
+                for entry in resp.model_dump()['properties']:
+                    alreadyIn.append(entry[QUERY.replace(' ','_')])
                 return resp.model_dump()['properties']
             else:
                 return None
         except Exception as e:
             print(f'Failed to process URL {url}: {str(e)}')
             return None
-    DBresource = boto3.resource("dynamodb")
+    DBresource = boto3.resource("dynamodb", region_name='us-east-1')
     dymaboDB = DBresource.Table('dataSets')
     urls = []
     # print(results)
@@ -187,30 +212,28 @@ def handler(event, context):
         urls.append(results['organic_results'][i]['url'])
     results = []
     # print(len(urls))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_url = {executor.submit(process_url, url): url for url in urls}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        future_to_url = {executor.submit(process_url, url, alreadyIn): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
             url = future_to_url[future]
             try:
                 result = future.result()
                 if result!=None:
-                    results.append(result)
+                    results.extend(result)
                     if len(results) >= TOTAL:
                         break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
     currentTime = datetime.datetime.utcnow().isoformat()
     # print(type(currentTime))
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime})
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum)})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
 
 
-if __name__ == '__main__':
-    handler('','')
-    
-
+# if __name__ == '__main__':
+#     handler('','')
 
 
 
