@@ -147,7 +147,7 @@ def handler(event, context):
         # exec(f'''contains_specifics: bool = Field(description="is this a {QUERY} and contains all of these specifics: {reqConvert}")''')
         not_already_scraped: int =Field(description=f'is it in the following list already? if it is, return the index of that item, else return -1: {",".join(alreadyIn)}'.format(alreadyIn))
         desc: str = Field(description='Why is this good? What are the good factors about it and what is are the relevant details. (keep concise)')
-        cost: Optional[str] = Field(description="price of item")
+        cost: Optional[str] = Field(description="price of item, must include currency")
         
 
 
