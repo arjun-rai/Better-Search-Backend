@@ -208,7 +208,7 @@
           "S3Bucket": {
             "Ref": "ServerlessDeploymentBucket"
           },
-          "S3Key": "serverless/dataScraper/dev/1720324711539-2024-07-07T03:58:31.539Z/dataScraper.zip"
+          "S3Key": "serverless/dataScraper/dev/1720409311525-2024-07-08T03:28:31.525Z/dataScraper.zip"
         },
         "Handler": "handler.handler",
         "Runtime": "python3.9",
@@ -226,14 +226,14 @@
         "DataDashscraperLogGroup"
       ]
     },
-    "DataDashscraperLambdaVersionqvRuyFWHP0lGz7Z1b4agsZwIn4ZTT7WuV02jaHgRRk": {
+    "DataDashscraperLambdaVersionO5yjABcDCIqs4WXjTGh2hayCB3hbxs9j9Wy1kOCWwQ": {
       "Type": "AWS::Lambda::Version",
       "DeletionPolicy": "Retain",
       "Properties": {
         "FunctionName": {
           "Ref": "DataDashscraperLambdaFunction"
         },
-        "CodeSha256": "ijE+EU2AtgFzrOAYYyzYLM4CUDelsGateeYM1i/DVto="
+        "CodeSha256": "e/4G1cwwufMjn0DxJIxl0+awWD5xe1WxJHDXZ+t0PZQ="
       }
     },
     "HttpApi": {
@@ -371,7 +371,7 @@
     "DataDashscraperLambdaFunctionQualifiedArn": {
       "Description": "Current Lambda function version",
       "Value": {
-        "Ref": "DataDashscraperLambdaVersionqvRuyFWHP0lGz7Z1b4agsZwIn4ZTT7WuV02jaHgRRk"
+        "Ref": "DataDashscraperLambdaVersionO5yjABcDCIqs4WXjTGh2hayCB3hbxs9j9Wy1kOCWwQ"
       },
       "Export": {
         "Name": "sls-dataScraper-dev-DataDashscraperLambdaFunctionQualifiedArn"

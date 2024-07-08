@@ -78,6 +78,10 @@ def handler(event, context):
         },
         )  
         return response.status_code, response.content
+    
+    def scrape_images(item):
+       imgs_json = requests.get('https://www.googleapis.com/customsearch/v1?key=AIzaSyDXz89jRij33XB0UIvMwwmvRSpz3AyJfH0&cx=01bdba7c3ca044dec&searchType=image&q='+item.replace(' ', '+')).json()
+       return imgs_json['items'][0]['link']
 
 
     #BAN YOUTUBE?
@@ -123,6 +127,7 @@ def handler(event, context):
 
     class prompt(BaseModel):
         prompt: str=Field(description="system prompt for assisstant")
+
     requirements = clientOA.chat.completions.create(
                 model="gpt-4o",
                 messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage.'.format(QUERY=QUERY)}], max_tokens=4096, response_model=prompt
@@ -204,6 +209,7 @@ def handler(event, context):
         except Exception as e:
             print(f'Failed to process URL {url}: {str(e)}')
             return None
+        
     DBresource = boto3.resource("dynamodb", region_name='us-east-1')
     dymaboDB = DBresource.Table('dataSets')
     urls = []
@@ -211,6 +217,7 @@ def handler(event, context):
     for i in range(len(results['organic_results'])):
         urls.append(results['organic_results'][i]['url'])
     results = []
+    imgs = []
     # print(len(urls))
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_url = {executor.submit(process_url, url, alreadyIn): url for url in urls}
@@ -219,14 +226,17 @@ def handler(event, context):
             try:
                 result = future.result()
                 if result!=None:
+                    for entry in result:
+                        imgs.append(scrape_images(entry[QUERY.replace(' ','_')]))
                     results.extend(result)
                     if len(results) >= TOTAL:
                         break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
     currentTime = datetime.datetime.utcnow().isoformat()
+    # print(imgs[0][0])
     # print(type(currentTime))
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum)})
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum),'image_urls':json.dumps(imgs)})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
