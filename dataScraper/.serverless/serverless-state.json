@@ -220,7 +220,7 @@
                 "S3Bucket": {
                   "Ref": "ServerlessDeploymentBucket"
                 },
-                "S3Key": "serverless/dataScraper/dev/1720409311525-2024-07-08T03:28:31.525Z/dataScraper.zip"
+                "S3Key": "serverless/dataScraper/dev/1720492349143-2024-07-09T02:32:29.143Z/dataScraper.zip"
               },
               "Handler": "handler.handler",
               "Runtime": "python3.9",
@@ -238,14 +238,14 @@
               "DataDashscraperLogGroup"
             ]
           },
-          "DataDashscraperLambdaVersionO5yjABcDCIqs4WXjTGh2hayCB3hbxs9j9Wy1kOCWwQ": {
+          "DataDashscraperLambdaVersionRNAVq8PS3t6oSyQwAWGCKq9QFxvasufANFHA2q9VY": {
             "Type": "AWS::Lambda::Version",
             "DeletionPolicy": "Retain",
             "Properties": {
               "FunctionName": {
                 "Ref": "DataDashscraperLambdaFunction"
               },
-              "CodeSha256": "e/4G1cwwufMjn0DxJIxl0+awWD5xe1WxJHDXZ+t0PZQ="
+              "CodeSha256": "ZhuefRf29p8NJwWRizW8fO06UFgqdh2x7Nkb1BSEA9s="
             }
           },
           "HttpApi": {
@@ -380,7 +380,7 @@
           "DataDashscraperLambdaFunctionQualifiedArn": {
             "Description": "Current Lambda function version",
             "Value": {
-              "Ref": "DataDashscraperLambdaVersionO5yjABcDCIqs4WXjTGh2hayCB3hbxs9j9Wy1kOCWwQ"
+              "Ref": "DataDashscraperLambdaVersionRNAVq8PS3t6oSyQwAWGCKq9QFxvasufANFHA2q9VY"
             },
             "Export": {
               "Name": "sls-dataScraper-dev-DataDashscraperLambdaFunctionQualifiedArn"
@@ -539,7 +539,7 @@
         "timeout": 6,
         "runtime": "python3.9",
         "vpc": {},
-        "versionLogicalId": "DataDashscraperLambdaVersionO5yjABcDCIqs4WXjTGh2hayCB3hbxs9j9Wy1kOCWwQ"
+        "versionLogicalId": "DataDashscraperLambdaVersionRNAVq8PS3t6oSyQwAWGCKq9QFxvasufANFHA2q9VY"
       }
     },
     "configValidationMode": "warn",
@@ -572,7 +572,7 @@
           "serverless_sdk/**"
         ],
         "artifact": "/Users/arjunrai/Documents/GitHub/RAG_Automation/dataScraper/.serverless/dataScraper.zip",
-        "artifactDirectoryName": "serverless/dataScraper/dev/1720409311525-2024-07-08T03:28:31.525Z"
+        "artifactDirectoryName": "serverless/dataScraper/dev/1720492349143-2024-07-09T02:32:29.143Z"
       }
     },
     "app": "data-scraper-app",
@@ -585,7 +585,7 @@
     "artifact": "/Users/arjunrai/Documents/GitHub/RAG_Automation/dataScraper/.serverless/dataScraper.zip"
   },
   "package": {
-    "artifactDirectoryName": "serverless/dataScraper/dev/1720409311525-2024-07-08T03:28:31.525Z",
+    "artifactDirectoryName": "serverless/dataScraper/dev/1720492349143-2024-07-09T02:32:29.143Z",
     "artifact": "dataScraper.zip"
   }
 }

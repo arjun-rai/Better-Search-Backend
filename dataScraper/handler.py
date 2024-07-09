@@ -18,10 +18,10 @@ def handler(event, context):
     QUERY = eventBody['query']
     TOTAL = int(eventBody['num_result'])
     USER = eventBody['user']
-    # QUERY='best smartphones 2024'
+    # QUERY='best beginner rock climbing shoes'
     # TOTAL=5
     # USER='asrrai09876@gmail.com'
-    NUMBER_OF_RESULTS = str(int(TOTAL*2))
+    NUMBER_OF_RESULTS = str(int(TOTAL))
     THRESHOLD = 8 
 
 
@@ -50,9 +50,9 @@ def handler(event, context):
     SBclient = ScrapingBeeClient(api_key='XGE6ILA4M49F1UN6CFD8DBKJ4M9J6E96RSEDRRTUXFM37QBSMHW3SOENTSNUVHRWKV4AQ0O9YFHD3STF')
 
     instructions_list = []
-    for i in range(5): #30
+    for i in range(2): #30
         instructions_list.append({"scroll_y": 1080})
-        instructions_list.append({"wait": 700})
+        instructions_list.append({"wait": 350})
 
 
     def scrape_page_urls(url):
@@ -141,7 +141,7 @@ def handler(event, context):
 #     # print(reqConvert)
 
     alreadyIn=[]
-    alreadyInNum=[1]*(int(1.5*TOTAL))
+    alreadyInNum=[1]*(100)
     class isQuery(BaseModel):
         # contains_specifics: bool = Field(description="contains all of these specifics: {reqConvert}")
         score: int = Field(description='does the text contain the necessary information for {QUERY}, 0-10'.format(QUERY=QUERY))
@@ -218,6 +218,7 @@ def handler(event, context):
         urls.append(results['organic_results'][i]['url'])
     results = []
     imgs = []
+    sources = []
     # print(len(urls))
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_url = {executor.submit(process_url, url, alreadyIn): url for url in urls}
@@ -228,15 +229,16 @@ def handler(event, context):
                 if result!=None:
                     for entry in result:
                         imgs.append(scrape_images(entry[QUERY.replace(' ','_')]))
+                        sources.append(url)
                     results.extend(result)
-                    if len(results) >= TOTAL:
-                        break
+                    # if len(results) >= TOTAL:
+                    #     break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
     currentTime = datetime.datetime.utcnow().isoformat()
     # print(imgs[0][0])
     # print(type(currentTime))
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum),'image_urls':json.dumps(imgs)})
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum),'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources)})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
