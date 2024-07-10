@@ -14,15 +14,15 @@ import datetime
 
 
 def handler(event, context):
-    eventBody = event['queryStringParameters']
-    QUERY = eventBody['query']
-    TOTAL = int(eventBody['num_result'])
-    USER = eventBody['user']
-    # QUERY='best beginner rock climbing shoes'
-    # TOTAL=5
-    # USER='asrrai09876@gmail.com'
+    # eventBody = event['queryStringParameters']
+    # QUERY = eventBody['query']
+    # TOTAL = int(eventBody['num_result'])
+    # USER = eventBody['user']
+    QUERY='best smartphones 2024'
+    TOTAL=10
+    USER='asrrai09876@gmail.com'
     NUMBER_OF_RESULTS = str(int(TOTAL))
-    THRESHOLD = 8 
+    THRESHOLD = 5 
 
 
     def num_tokens_from_string(string: str, encoding_name: str) -> int:
@@ -141,7 +141,7 @@ def handler(event, context):
 #     # print(reqConvert)
 
     alreadyIn=[]
-    alreadyInNum=[1]*(100)
+    # alreadyInNum=[1]*(100)
     class isQuery(BaseModel):
         # contains_specifics: bool = Field(description="contains all of these specifics: {reqConvert}")
         score: int = Field(description='does the text contain the necessary information for {QUERY}, 0-10'.format(QUERY=QUERY))
@@ -150,21 +150,21 @@ def handler(event, context):
     class item(BaseModel):
         exec(f'{QUERY.replace(" ", "_")}: str = Field(description="{QUERY}")')
         # exec(f'''contains_specifics: bool = Field(description="is this a {QUERY} and contains all of these specifics: {reqConvert}")''')
-        not_already_scraped: int =Field(description=f'return the index of the item in the list, else return -1: {",".join(alreadyIn)}'.format(alreadyIn))
+        not_already_in_list: bool =Field(description=f'is the item in the list or very similar to one? True or False: "{",".join(alreadyIn)}"'.format(alreadyIn))
         desc: str = Field(description='Why is this good? What are the good factors about it and what is are the relevant details. (keep concise)')
         cost: Optional[str] = Field(description="price of item, must include currency")
         
 
 
-        @field_validator('not_already_scraped', mode='before')
-        def must_not_be_in_list(cls, v, info: FieldValidationInfo):
-            # Check the values of both field1 and field2
-            field2 = v if info.field_name == 'not_already_scraped' else info.data.get('not_already_scraped')
+        # @field_validator('not_already_in_list', mode='before')
+        # def must_not_be_in_list(cls, v, info: FieldValidationInfo):
+        #     # Check the values of both field1 and field2
+        #     field2 = v if info.field_name == 'not_already_in_list' else info.data.get('not_already_in_list')
 
-            if field2 !=-1:
-                alreadyInNum[int(field2)]+=1
-                raise ValueError('has to be not already in the list')
-            return v
+        #     if field2 !=-1:
+               
+        #         # raise ValueError('has to be not already in the list')
+        #     return v
 
 
     class query(BaseModel):
@@ -172,7 +172,7 @@ def handler(event, context):
 
     import concurrent.futures
 
-    def process_url(url, alreadyIn):
+    def process_url(url):
         print(f'Processing URL: {url}')
         page_content = scrape_page_content(url)
         cleantext = trafilatura.extract(page_content[1], include_comments=False)
@@ -218,35 +218,40 @@ def handler(event, context):
         urls.append(results['organic_results'][i]['url'])
     results = []
     imgs = []
-    sources = []
+    sources = {}
     # print(len(urls))
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        future_to_url = {executor.submit(process_url, url, alreadyIn): url for url in urls}
+        future_to_url = {executor.submit(process_url, url): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
             url = future_to_url[future]
             try:
                 result = future.result()
                 if result!=None:
+                    newResult =[]
                     for entry in result:
-                        imgs.append(scrape_images(entry[QUERY.replace(' ','_')]))
-                        sources.append(url)
-                    results.extend(result)
+                        if entry[QUERY.replace(' ', '_')].lower() in sources and entry['not_already_in_list']:
+                            sources[entry[QUERY.replace(' ', '_')].lower()].append(url)
+                        else:
+                            sources[entry[QUERY.replace(' ', '_')].lower()] = [url]
+                            imgs.append(scrape_images(entry[QUERY.replace(' ','_')]))
+                            newResult.append(entry)
+                    results.extend(newResult)
                     # if len(results) >= TOTAL:
                     #     break
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
     currentTime = datetime.datetime.utcnow().isoformat()
     # print(imgs[0][0])
+    # print(sources)
     # print(type(currentTime))
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime, 'num_mentioned':json.dumps(alreadyInNum),'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources)})
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime,'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources)})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
 
 
-# if __name__ == '__main__':
-#     handler('','')
+if __name__ == '__main__':
+    handler('','')
 
 
 
-    
