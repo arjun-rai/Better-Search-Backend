@@ -14,15 +14,25 @@ import datetime
 
 
 def handler(event, context):
-    # eventBody = event['queryStringParameters']
-    # QUERY = eventBody['query']
-    # TOTAL = int(eventBody['num_result'])
-    # USER = eventBody['user']
-    QUERY='best smartphones 2024'
-    TOTAL=10
-    USER='asrrai09876@gmail.com'
+    eventBody = event['queryStringParameters']
+    QUERY = re.sub('[^A-Za-z0-9]+ ', '', eventBody['query'])
+    TOTAL = int(eventBody['num_result'])
+    USER = eventBody['user']
+    # QUERY='best gaming CPU'
+    # TOTAL=10
+    # USER='asrrai09876@gmail.com'
     NUMBER_OF_RESULTS = str(int(TOTAL))
     THRESHOLD = 5 
+
+    items_ = json.loads(requests.get('https://t5frigw267.execute-api.us-east-1.amazonaws.com/default/dataScraper-dev-data-scraper?userID=' + 'asrrai09876@gmail.com').content)['Items']
+    if len(items_)>0:
+        num_done = int(items_[len(items_)-1]['Count']['N'])
+    else:
+        num_done =0
+
+    if num_done>4:
+        print('OUT OF SEARCHES')
+        return None
 
 
     def num_tokens_from_string(string: str, encoding_name: str) -> int:
@@ -130,7 +140,7 @@ def handler(event, context):
 
     requirements = clientOA.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage.'.format(QUERY=QUERY)}], max_tokens=4096, response_model=prompt
+                messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage. Make sure there are no duplicates.'.format(QUERY=QUERY)}], max_tokens=4096, response_model=prompt
                 )
 
     # print(requirements)
@@ -156,15 +166,15 @@ def handler(event, context):
         
 
 
-        # @field_validator('not_already_in_list', mode='before')
-        # def must_not_be_in_list(cls, v, info: FieldValidationInfo):
-        #     # Check the values of both field1 and field2
-        #     field2 = v if info.field_name == 'not_already_in_list' else info.data.get('not_already_in_list')
+        @field_validator('not_already_in_list', mode='before')
+        def must_not_be_in_list(cls, v, info: FieldValidationInfo):
+            # # Check the values of both field1 and field2
+            field2 = v if info.field_name == QUERY.replace(" ", "_") else info.data.get(QUERY.replace(" ", "_"))
 
-        #     if field2 !=-1:
+            alreadyIn.append(field2)
                
-        #         # raise ValueError('has to be not already in the list')
-        #     return v
+                # raise ValueError('has to be not already in the list')
+            return v
 
 
     class query(BaseModel):
@@ -201,8 +211,8 @@ def handler(event, context):
                 model="gpt-4o",
                 messages=[{'role':"system", "content":requirements.model_dump()['prompt']},{"role": "user", "content": cleantext}], response_model=query, max_tokens=4096
                 )
-                for entry in resp.model_dump()['properties']:
-                    alreadyIn.append(entry[QUERY.replace(' ','_')])
+                # for entry in resp.model_dump()['properties']:
+                #     alreadyIn.append(entry[QUERY.replace(' ','_')])
                 return resp.model_dump()['properties']
             else:
                 return None
@@ -244,14 +254,15 @@ def handler(event, context):
     # print(imgs[0][0])
     # print(sources)
     # print(type(currentTime))
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime,'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources)})
+    
+    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime,'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources), 'Count':num_done+1, 'visible':True})
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
 
 
-if __name__ == '__main__':
-    handler('','')
+# if __name__ == '__main__':
+#     handler('','')
 
 
 
