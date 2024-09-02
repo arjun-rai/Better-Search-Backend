@@ -91,7 +91,7 @@ def handler(event, context):
         return response.status_code, response.content
     
     def scrape_images(item):
-       imgs_json = requests.get('https://www.googleapis.com/customsearch/v1?key=AIzaSyDXz89jRij33XB0UIvMwwmvRSpz3AyJfH0&cx=01bdba7c3ca044dec&searchType=image&q='+item.replace(' ', '+')).json()
+       imgs_json = requests.get('https://www.googleapis.com/customsearch/v1?key='+os.environ['google_API_KEY']+'&cx=01bdba7c3ca044dec&searchType=image&q='+item.replace(' ', '+')).json()
        return imgs_json['items'][0]['link']
 
 
