@@ -11,6 +11,7 @@ import regex as re
 from openai import OpenAI
 import boto3
 import datetime
+import os
 
 
 def handler(event, context):
@@ -45,7 +46,7 @@ def handler(event, context):
         response = requests.get(
             url='https://app.scrapingbee.com/api/v1/store/google',
             params={
-                'api_key': 'XGE6ILA4M49F1UN6CFD8DBKJ4M9J6E96RSEDRRTUXFM37QBSMHW3SOENTSNUVHRWKV4AQ0O9YFHD3STF',
+                'api_key': os.environ["SB_API_KEY"],
                 
                 'search': QUERY,
                 'language': 'en', 
@@ -57,7 +58,7 @@ def handler(event, context):
 
     results = json.loads(google()[1])
 
-    SBclient = ScrapingBeeClient(api_key='XGE6ILA4M49F1UN6CFD8DBKJ4M9J6E96RSEDRRTUXFM37QBSMHW3SOENTSNUVHRWKV4AQ0O9YFHD3STF')
+    SBclient = ScrapingBeeClient(api_key=os.environ["SB_API_KEY"])
 
     instructions_list = []
     for i in range(2): #30
@@ -132,7 +133,7 @@ def handler(event, context):
     #     system_instruction=prompt1
     #     ),
     #     mode=instructor.Mode.GEMINI_JSON)
-    clientOA = instructor.patch(OpenAI(api_key='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'))
+    clientOA = instructor.patch(OpenAI(api_key=os.environ["OPENAI_API_KEY"]))
 
 
     class prompt(BaseModel):
