@@ -29,9 +29,11 @@ def handler(event, context):
     NUMBER_OF_RESULTS = str(int(TOTAL))
     THRESHOLD = 5 
 
-    items_ = json.loads(requests.get('https://t5frigw267.execute-api.us-east-1.amazonaws.com/default/dataScraper-dev-data-scraper?userID=' + 'asrrai09876@gmail.com').content)['Items']
+    items_ = json.loads(requests.get('https://t5frigw267.execute-api.us-east-1.amazonaws.com/default/dataScraper-dev-data-scraper?userID=' + USER).content)['Items']
     if len(items_)>0:
         num_done = int(items_[len(items_)-1]['Count']['N'])
+        # print(items_[len(items_)-1])
+        # print(num_done)
     else:
         num_done =0
 
