@@ -6,12 +6,16 @@ import instructor
 from pydantic import BaseModel, Field, field_validator, AfterValidator, FieldValidationInfo
 from typing_extensions import Literal,Annotated
 from typing import List, Dict, Optional
-import tiktoken
+# import tiktoken
 import regex as re
 from openai import OpenAI
 import boto3
 import datetime
 import os
+from difflib import SequenceMatcher
+import time
+import random
+from openai import APIError, RateLimitError, APIConnectionError
 
 
 def handler(event, context):
@@ -36,11 +40,11 @@ def handler(event, context):
         return None
 
 
-    def num_tokens_from_string(string: str, encoding_name: str) -> int:
-        """Returns the number of tokens in a text string."""
-        encoding = tiktoken.get_encoding(encoding_name)
-        num_tokens = len(encoding.encode(string))
-        return num_tokens
+    # def num_tokens_from_string(string: str, encoding_name: str) -> int:
+    #     """Returns the number of tokens in a text string."""
+    #     encoding = tiktoken.get_encoding(encoding_name)
+    #     num_tokens = len(encoding.encode(string))
+    #     return num_tokens
 
     def google():
         response = requests.get(
@@ -94,9 +98,20 @@ def handler(event, context):
        imgs_json = requests.get('https://www.googleapis.com/customsearch/v1?key='+os.environ['google_API_KEY']+'&cx=01bdba7c3ca044dec&searchType=image&q='+item.replace(' ', '+')).json()
        return imgs_json['items'][0]['link']
 
-
-    #BAN YOUTUBE?
-
+    def is_similar_product(product1, product2, threshold=0.65):
+        """
+        Compare two product names using string similarity and determine if they are the same product.
+        Returns True if they are considered similar enough, False otherwise.
+        """
+        # Clean the names - remove common prefixes/suffixes, spaces, lowercase
+        p1 = re.sub(r'[^\w\s]', '', product1.lower()).strip()
+        p2 = re.sub(r'[^\w\s]', '', product2.lower()).strip()
+        
+        # SequenceMatcher for string similarity
+        similarity = SequenceMatcher(None, p1, p2).ratio()
+        
+        # Return True if similarity is above threshold
+        return similarity >= threshold
 
     # safety_settings = [
     #     {
@@ -136,13 +151,72 @@ def handler(event, context):
     clientOA = instructor.patch(OpenAI(api_key=os.environ["OPENAI_API_KEY"]))
 
 
+    def make_openai_call(model, messages, response_model=None, max_tokens=4096, max_retries=5, initial_backoff=1):
+        """
+        Make an OpenAI API call with exponential backoff for rate limits
+        """
+        retries = 0
+        backoff = initial_backoff
+        
+        while retries <= max_retries:
+            try:
+                # Add a small random sleep between API calls to avoid rate limits
+                if retries > 0:
+                    # Small jitter to avoid thundering herd problem
+                    jitter = random.uniform(0, 0.5)
+                    time.sleep(backoff + jitter)
+                    print(f"Retry {retries} after {backoff}s backoff")
+                
+                # Make the API call
+                if response_model:
+                    result = clientOA.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        response_model=response_model,
+                        max_tokens=max_tokens
+                    )
+                else:
+                    result = clientOA.chat.completions.create(
+                        model=model,
+                        messages=messages,
+                        max_tokens=max_tokens
+                    )
+                
+                # Successful call, return result
+                return result
+                
+            except (RateLimitError, APIError, APIConnectionError) as e:
+                retries += 1
+                if retries > max_retries:
+                    print(f"Maximum retries reached: {e}")
+                    raise e
+                
+                # Exponential backoff: double the backoff time after each retry
+                backoff *= 2
+                
+                # If we get a specific retry delay from the API
+                if hasattr(e, 'retry_after') and e.retry_after:
+                    backoff = max(backoff, e.retry_after)
+                    
+                print(f"Rate limit hit: {e}. Retrying in {backoff} seconds...")
+            
+            except Exception as e:
+                # For non-rate limit errors, just raise them
+                print(f"Non-rate limit error: {e}")
+                raise e
+        
+        # If we've exhausted retries
+        raise Exception(f"Failed after {max_retries} retries")
+
     class prompt(BaseModel):
         prompt: str=Field(description="system prompt for assisstant")
 
-    requirements = clientOA.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage. Make sure there are no duplicates.'.format(QUERY=QUERY)}], max_tokens=4096, response_model=prompt
-                )
+    # Use our rate-limit-aware function for API calls
+    requirements = make_openai_call(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": 'write a system prompt to find the {QUERY} in a given provided webpage. Make sure there are no duplicates.'.format(QUERY=QUERY)}],
+        response_model=prompt
+    )
 
     # print(requirements)
   
@@ -199,7 +273,7 @@ def handler(event, context):
             #     response_model=isPlan,
             #     strict=True
             # )
-            resp = clientOA.chat.completions.create(
+            resp = make_openai_call(
             model="gpt-4o",
             messages=[{'role':"system", "content":prompt1},{"role": "user", "content": cleantext}], response_model=isQuery, max_tokens=4096
             )
@@ -208,7 +282,7 @@ def handler(event, context):
             # check = resp.model_dump()[f'is_this_a_{QUERY.replace(" ", "_")}']
             if score > THRESHOLD:
                 # print(resp.model_dump()['score'])
-                resp = clientOA.chat.completions.create(
+                resp = make_openai_call(
                 model="gpt-4o",
                 messages=[{'role':"system", "content":requirements.model_dump()['prompt']},{"role": "user", "content": cleantext}], response_model=query, max_tokens=4096
                 )
@@ -227,36 +301,66 @@ def handler(event, context):
     # print(results)
     for i in range(len(results['organic_results'])):
         urls.append(results['organic_results'][i]['url'])
-    results = []
-    imgs = []
-    sources = {}
-    # print(len(urls))
+    
+    all_results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         future_to_url = {executor.submit(process_url, url): url for url in urls}
         for future in concurrent.futures.as_completed(future_to_url):
             url = future_to_url[future]
             try:
                 result = future.result()
-                if result!=None:
-                    newResult =[]
-                    for entry in result:
-                        if entry[QUERY.replace(' ', '_')].lower() in sources and entry['not_already_in_list']:
-                            sources[entry[QUERY.replace(' ', '_')].lower()].append(url)
-                        else:
-                            sources[entry[QUERY.replace(' ', '_')].lower()] = [url]
-                            imgs.append(scrape_images(entry[QUERY.replace(' ','_')]))
-                            newResult.append(entry)
-                    results.extend(newResult)
-                    # if len(results) >= TOTAL:
-                    #     break
+                if result is not None:
+                    # Store both properties and source URL
+                    all_results.append({'properties': result, 'url': url})
             except Exception as exc:
                 print(f'{url} generated an exception: {exc}')
-    currentTime = datetime.datetime.utcnow().isoformat()
-    # print(imgs[0][0])
-    # print(sources)
-    # print(type(currentTime))
     
-    dymaboDB.put_item(Item={'userID': USER, 'title':QUERY, 'data':json.dumps(results), 'timestamp':currentTime,'image_urls':json.dumps(imgs), 'source_urls':json.dumps(sources), 'Count':num_done+1, 'visible':True})
+    # Deduplicate products based on semantic similarity
+    deduplicated_results = []
+    found_products = []  # List to track product names we've already found
+    sources = {}
+    imgs = []
+    
+    for result in all_results:
+        url = result['url']
+        for entry in result['properties']:
+            product_name = entry[QUERY.replace(' ', '_')]
+            
+            # Check if this product is similar to any we've already found
+            duplicate_found = False
+            duplicate_product = None
+            
+            for existing_product in found_products:
+                if is_similar_product(product_name, existing_product):
+                    # This is a duplicate
+                    duplicate_found = True
+                    duplicate_product = existing_product
+                    break
+            
+            if duplicate_found and duplicate_product:
+                # Add this URL to the sources for the existing product
+                if duplicate_product.lower() in sources:
+                    if url not in sources[duplicate_product.lower()]:
+                        sources[duplicate_product.lower()].append(url)
+            else:
+                # This is a new product
+                found_products.append(product_name)
+                sources[product_name.lower()] = [url]
+                imgs.append(scrape_images(product_name))
+                deduplicated_results.append(entry)
+    
+    currentTime = datetime.datetime.utcnow().isoformat()
+    
+    dymaboDB.put_item(Item={
+        'userID': USER, 
+        'title': QUERY, 
+        'data': json.dumps(deduplicated_results), 
+        'timestamp': currentTime,
+        'image_urls': json.dumps(imgs), 
+        'source_urls': json.dumps(sources), 
+        'Count': num_done+1, 
+        'visible': True
+    })
 
     response = {"statusCode": 200, 'headers' : {'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Credentials': True,}}
     return response
